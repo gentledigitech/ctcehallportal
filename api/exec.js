@@ -6,6 +6,10 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    if (!APPS_SCRIPT_URL) {
+      return res.status(500).json({ success: false, message: "APPS_SCRIPT_URL is not set in Vercel." });
+    }
+
     const upstream = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
