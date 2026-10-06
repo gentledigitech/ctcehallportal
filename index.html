@@ -381,7 +381,6 @@ html[data-theme="dark"] .chat-list-item.active{background:#0c4a6e}
   .chat-layout.show-list .chat-main{display:none}
   #chatBackBtn{display:flex!important}
   .chat-msg{max-width:86%}
-  /* on mobile always show own-message actions inline */
   .chat-msg.me .msg-actions{display:flex;position:static;margin:-2px 0 6px;background:transparent;border:none;padding:0;box-shadow:none;justify-content:flex-end}
 }
 
@@ -411,7 +410,6 @@ html[data-theme="dark"] .chat-list-item.active{background:#0c4a6e}
   .emoji-picker{width:260px}
 }
 </style>
-  <script src="/shim.js"></script>
 </head>
 <body>
 
@@ -1009,7 +1007,6 @@ html[data-theme="dark"] .chat-list-item.active{background:#0c4a6e}
   </div>
 </div>
 
-<!-- Edit message modal -->
 <div id="editMessageModal" class="modal">
   <div class="modal-content">
     <h3><i class="fa-solid fa-pen" style="color:var(--primary)"></i> Edit Message</h3>
@@ -1024,7 +1021,6 @@ html[data-theme="dark"] .chat-list-item.active{background:#0c4a6e}
   </div>
 </div>
 
-<!-- Media viewer modal -->
 <div id="mediaViewModal" class="modal">
   <div class="modal-content wide" style="max-width:840px;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
@@ -1049,6 +1045,57 @@ html[data-theme="dark"] .chat-list-item.active{background:#0c4a6e}
 </div>
 
 <div id="toastContainer" aria-live="polite"></div>
+
+<!-- ================================================================
+     SHIM: makes google.script.run work outside Google Apps Script
+     This MUST appear before the main script below.
+     ================================================================ -->
+<script>
+(function () {
+  const ENDPOINT = "/api/exec";
+
+  async function callBackend(action, args) {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: action, args: args })
+    });
+    if (!res.ok) throw new Error("Server responded with " + res.status);
+    return await res.json();
+  }
+
+  function makeRunner() {
+    let onSuccess = null;
+    let onFailure = null;
+    let userObject = null;
+
+    const base = {
+      withSuccessHandler(fn) { onSuccess = fn; return proxy; },
+      withFailureHandler(fn) { onFailure = fn; return proxy; },
+      withUserObject(obj)    { userObject = obj; return proxy; }
+    };
+
+    const proxy = new Proxy(base, {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        return function (...args) {
+          callBackend(String(prop), args)
+            .then(result => { if (onSuccess) onSuccess(result, userObject); })
+            .catch(err   => { if (onFailure) onFailure(err, userObject); });
+        };
+      }
+    });
+
+    return proxy;
+  }
+
+  window.google = {
+    script: {
+      get run() { return makeRunner(); }
+    }
+  };
+})();
+</script>
 
 <script>
 /* ================================================================
@@ -2603,7 +2650,7 @@ const ChatState = {
   messageableUsers: [], selectedGroupUsers: [], superAdmins: [],
   emojiInsertTarget: null
 };
-const MediaCache = {}; // messageId -> dataURL
+const MediaCache = {};
 
 const CHAT_EMOJIS = ["😀","😃","😄","😁","😆","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐","🤓","😎","🤩","🥳","😏","😒","😞","😔","😟","😕","🙁","☹️","😣","😖","😫","😩","🥺","😢","😭","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱","😨","😰","😥","😓","🤗","🤔","🤭","🤫","🤥","😶","😐","😑","😬","🙄","😯","😦","😧","😮","😲","🥱","😴","🤤","😪","😵","🤐","🥴","🤢","🤮","🤧","😷","🤒","🤕","🤑","🤠","😈","👿","👹","👺","🤡","💩","👻","💀","👽","👾","🤖","🎃","😺","😸","😹","😻","😼","😽","🙀","😿","😾","👍","👎","👏","🙌","👐","🤲","🤝","🙏","✌️","🤞","🤟","🤘","👌","👈","👉","👆","👇","☝️","✋","🤚","🖐","🖖","👋","🤙","💪","✍️","💅","👂","👃","🧠","👀","👁","👅","👄","❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","✅","❌","⭕","⚠️","💯","🔥","✨","⭐","🌟","💫","⚡","🎉","🎊","🎈","🎁","🎂","🍰","🍕","🍔","🍟","☕","🍵","🍺","🍻","🎵","🎶","📷","📞","💬","💭"];
 
@@ -2627,7 +2674,6 @@ function chatTimeFull(iso){
   catch(e){ return ""; }
 }
 
-/* ---------- polling ---------- */
 function startChatPolling(){
   stopChatPolling();
   if(!State.user) return;
@@ -2649,7 +2695,6 @@ function startMessagePolling(){
   }, 5000);
 }
 
-/* ---------- chat list ---------- */
 function refreshChats(silent){
   if(!State.user) return;
   google.script.run.withSuccessHandler(res => {
@@ -2707,7 +2752,6 @@ function renderChatList(){
   });
 }
 
-/* ---------- open chat ---------- */
 function openChat(chatId){
   const chat = ChatState.chats.find(c => c.chatId === chatId);
   if(!chat) return;
@@ -2770,7 +2814,6 @@ function renderChatMessages(forceScrollBottom){
     div.className = "chat-msg " + (isSystem ? "system" : (m.isMine ? "me" : "them"));
     div.dataset.mid = mid;
 
-    // Action buttons (own messages only, not system)
     let actionsHtml = "";
     if(m.isMine && !isSystem){
       const canEdit = (m.type === "text");
@@ -2841,7 +2884,6 @@ function markChatAsRead(chatId){
   }).withFailureHandler(()=>{}).markChatRead(chatId, State.user.indexNo);
 }
 
-/* ---------- sending text ---------- */
 function autoGrowTextarea(el){
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
@@ -2866,7 +2908,6 @@ function sendChatText(){
     .sendChatMessage(ChatState.activeChatId, State.user.indexNo, "text", txt);
 }
 
-/* ---------- emoji ---------- */
 function buildEmojiGrid(){
   const g = document.getElementById("emojiGrid");
   if(!g || g.dataset.built === "1") return;
@@ -2878,7 +2919,6 @@ function toggleEmojiPicker(e){
   const p = document.getElementById("emojiPicker");
   if(!p) return;
   const show = !p.classList.contains("show");
-  // close plus menu if open
   const pm = document.getElementById("plusMenu");
   if(pm) pm.classList.remove("show");
   const pb = document.getElementById("plusBtn");
@@ -2897,14 +2937,12 @@ function insertEmoji(emoji){
   autoGrowTextarea(input);
 }
 
-/* ---------- plus menu / media picker ---------- */
 function togglePlusMenu(e){
   if(e) e.stopPropagation();
   const pm = document.getElementById("plusMenu");
   const pb = document.getElementById("plusBtn");
   if(!pm) return;
   const show = !pm.classList.contains("show");
-  // close emoji if open
   const ep = document.getElementById("emojiPicker");
   if(ep) ep.classList.remove("show");
   if(show){ pm.classList.add("show"); if(pb) pb.classList.add("open"); }
@@ -2951,7 +2989,6 @@ function uploadMediaBlob(b64, mime, fileName, size, kind){
     .uploadMediaMessage(ChatState.activeChatId, State.user.indexNo, b64, mime, fileName, size, kind);
 }
 
-/* ---------- view media ---------- */
 function viewMediaMessage(messageId, kind){
   openModal("mediaViewModal");
   document.getElementById("mediaViewTitle").textContent = (kind.charAt(0).toUpperCase() + kind.slice(1)) + " message";
@@ -2990,7 +3027,6 @@ function showMediaInViewer(dataUrl, mime, fileName, kind){
   dl.download = fileName || ("file");
 }
 
-/* ---------- edit ---------- */
 function openEditMessage(messageId){
   const m = ChatState.messages.find(x => x.messageId === messageId);
   if(!m || !m.isMine || m.type !== "text") return;
@@ -3019,7 +3055,6 @@ function submitEditMessage(){
   }).editChatMessage(id, State.user.indexNo, txt);
 }
 
-/* ---------- delete for everyone ---------- */
 function confirmDeleteMessage(messageId){
   const m = ChatState.messages.find(x => x.messageId === messageId);
   if(!m || !m.isMine) return;
@@ -3027,14 +3062,13 @@ function confirmDeleteMessage(messageId){
   google.script.run.withSuccessHandler(res => {
     if(!res || !res.success){ toast((res && res.message) || "Delete failed.", "error"); return; }
     toast("Message deleted.", "success");
-    ChatState.lastMsgHash = ""; // force re-render on next poll
+    ChatState.lastMsgHash = "";
     pollActiveChat();
     setTimeout(() => refreshChats(true), 400);
   }).withFailureHandler(err => toast(err.message || "Delete failed", "error"))
     .deleteChatMessage(messageId, State.user.indexNo);
 }
 
-/* ---------- voice playback (for legacy voice messages) ---------- */
 function playVoiceMessage(messageId, btn){
   if(btn.disabled) return;
   btn.disabled = true;
@@ -3054,7 +3088,6 @@ function playVoiceMessage(messageId, btn){
     .getVoiceMessageBase64(messageId, State.user.indexNo);
 }
 
-/* ---------- new chat modal ---------- */
 function openNewChatModal(){
   if(!State.user) return;
   openModal("newChatModal");
@@ -3093,7 +3126,6 @@ function startDirectChat(targetIndex){
     .createDirectChat(State.user.indexNo, targetIndex);
 }
 
-/* ---------- new group modal ---------- */
 function openNewGroupModal(){
   if(!State.user) return;
   ChatState.selectedGroupUsers = [];
@@ -3153,7 +3185,6 @@ function submitNewGroup(){
     .createGroupChat(State.user.indexNo, name, ChatState.selectedGroupUsers);
 }
 
-/* ---------- escalate ---------- */
 function updateEscalateButtonVisibility(){
   const btn = document.getElementById("chatEscalateBtn");
   if(!btn) return;
@@ -3198,16 +3229,13 @@ function submitEscalate(){
     .escalateChatToSuperAdmin(ChatState.activeChatId, State.user.indexNo, sa);
 }
 
-/* ---------- close popovers on outside click ---------- */
 document.addEventListener("click", e => {
-  // emoji picker
   const p = document.getElementById("emojiPicker");
   if(p && p.classList.contains("show")){
     if(!e.target.closest("#emojiPicker") && !e.target.closest(".emoji-btn")){
       p.classList.remove("show");
     }
   }
-  // plus menu
   const pm = document.getElementById("plusMenu");
   const pb = document.getElementById("plusBtn");
   if(pm && pm.classList.contains("show")){
